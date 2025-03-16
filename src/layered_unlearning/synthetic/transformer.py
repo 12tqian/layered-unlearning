@@ -5,6 +5,8 @@ from torch.utils.data import Dataset
 import functools
 from typing import Dict
 
+# Taken from: https://github.com/CG80499/Attention-only-transformers/
+
 
 @functools.cache
 def sinusoidal_embeddings(seq_len: int, d_model: int):
