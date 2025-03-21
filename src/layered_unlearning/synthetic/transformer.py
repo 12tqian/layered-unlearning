@@ -5,8 +5,6 @@ from torch.utils.data import Dataset
 import functools
 from typing import Dict
 
-# Taken from: https://github.com/CG80499/Attention-only-transformers/
-
 
 @functools.cache
 def sinusoidal_embeddings(seq_len: int, d_model: int):
@@ -37,29 +35,31 @@ def attention(K: torch.Tensor, Q: torch.Tensor, V: torch.Tensor, mask: torch.Ten
     # Compute attention scores with scaling and masking
     scores = torch.matmul(Q, K.transpose(2, 3)) / d_k**0.5 + mask
     weights = torch.softmax(scores, dim=-1)
-    return torch.matmul(weights, V)
+    return weights
 
 
 class Embedding(nn.Module):
     """Token embedding layer."""
 
-    def __init__(self, n_vocab, d_model):
+    def __init__(self, n_vocab: int, d_model: int):
         super().__init__()
         self.embedding_matrix = nn.Linear(n_vocab, d_model, bias=False)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         return self.embedding_matrix(x)
 
 
 class DecoderLayer(nn.Module):
     """Transformer decoder layer with self-attention."""
 
-    def __init__(self, d_model, n_heads, seq_len, layer_number=-1):
+    def __init__(
+        self, d_model: int, n_heads: int, seq_len: int, layer_number: int = -1
+    ):
         super().__init__()
         assert d_model % n_heads == 0, "d_model must be divisible by n_heads"
 
         # Dimensions
-        self.d_k = self.dv = d_model // n_heads
+        self.d_k = self.d_v = d_model // n_heads
         self.seq_len, self.n_heads, self.d_model = seq_len, n_heads, d_model
         self.layer_number = layer_number
 
@@ -72,28 +72,30 @@ class DecoderLayer(nn.Module):
         self.W_v = nn.Linear(d_model, d_model, bias=False)
         self.W_o = nn.Linear(d_model, d_model, bias=False)
 
-    def forward(self, X: torch.Tensor):
-        batch_size = X.size(0)
+    def forward(self, x: torch.Tensor):
+        batch_size = x.size(0)
 
         # Project inputs
         Q = (
-            self.W_q(X)
+            self.W_q(x)
             .view(batch_size, self.seq_len, self.n_heads, self.d_k)
             .transpose(1, 2)
         )
         K = (
-            self.W_k(X)
+            self.W_k(x)
             .view(batch_size, self.seq_len, self.n_heads, self.d_k)
             .transpose(1, 2)
         )
         V = (
-            self.W_v(X)
-            .view(batch_size, self.seq_len, self.n_heads, self.dv)
+            self.W_v(x)
+            .view(batch_size, self.seq_len, self.n_heads, self.d_v)
             .transpose(1, 2)
         )
 
         # Compute attention and reshape
-        attn_output = attention(K, Q, V, self.mask.to(X.device))
+        weights = attention(K, Q, V, self.mask.to(x.device))
+        attn_output = torch.matmul(weights, V)
+
         attn_output = (
             attn_output.transpose(1, 2)
             .contiguous()
@@ -101,7 +103,7 @@ class DecoderLayer(nn.Module):
         )
 
         # Apply output projection and residual connection
-        return self.W_o(attn_output) + X
+        return self.W_o(attn_output) + x
 
 
 class Transformer(nn.Module):
