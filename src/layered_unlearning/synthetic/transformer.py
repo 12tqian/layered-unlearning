@@ -72,7 +72,7 @@ class DecoderLayer(nn.Module):
         self.W_v = nn.Linear(d_model, d_model, bias=False)
         self.W_o = nn.Linear(d_model, d_model, bias=False)
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, return_attn: bool = False):
         batch_size = x.size(0)
 
         # Project inputs
@@ -103,7 +103,12 @@ class DecoderLayer(nn.Module):
         )
 
         # Apply output projection and residual connection
-        return self.W_o(attn_output) + x
+        x = self.W_o(attn_output) + x
+
+        if return_attn:
+            return x, weights
+
+        return x
 
 
 class Transformer(nn.Module):
@@ -125,13 +130,23 @@ class Transformer(nn.Module):
         self.n_vocab = n_vocab
         self.n_heads = n_heads
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, return_attn: bool = False):
         # One-hot encode input tokens
         x = F.one_hot(x, num_classes=self.n_vocab).float()
 
         # Embedding and decoder pass
         x = self.embedding(x)
-        for layer in self.decoder_layers:
-            x = layer(x)
 
-        return self.unembedding(x)
+        attn = None
+        for layer in self.decoder_layers:
+            if return_attn:
+                x, attn = layer(x, return_attn=True)
+            else:
+                x = layer(x)
+
+        x = self.unembedding(x)
+
+        if return_attn:
+            return x, attn
+
+        return x
