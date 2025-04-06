@@ -50,3 +50,38 @@ class GaussianMixture:
 
     def __repr__(self):
         return f"GaussianMixture(classes={self.classes}, weights={self.weights})"
+
+
+def construct_dataset(
+    X_full: torch.Tensor,
+    learn_A: bool,
+    learn_B: bool,
+    relearn: bool = False,
+    n_samples: int = 1000,
+):
+    X = []
+    y = []
+
+    if not relearn:
+        X.append(X_full[0])
+        y.append(torch.zeros(n_samples))
+
+        X.append(X_full[3])
+        y.append(torch.ones(n_samples))
+
+    if learn_A:
+        X.append(X_full[1])
+        y.append(torch.ones(n_samples))
+    elif not relearn:
+        X.append(X_full[1])
+        y.append(torch.zeros(n_samples))
+
+    if learn_B:
+        X.append(X_full[2])
+        y.append(torch.ones(n_samples))
+    elif not relearn:
+        X.append(X_full[2])
+        y.append(torch.zeros(n_samples))
+    X = torch.cat(X)
+    y = torch.cat(y)
+    return X, y

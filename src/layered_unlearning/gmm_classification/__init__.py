@@ -1,2 +1,2 @@
-from .dataset import Gaussian, GaussianMixture
-from .model import LogisticModel
+from .dataset import Gaussian, GaussianMixture, construct_dataset
+from .model import LogisticModel, train, evaluate
