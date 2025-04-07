@@ -44,6 +44,7 @@ def evaluate(
     X: torch.Tensor,
     y: torch.Tensor,
     device: str = "cuda",
+    **kwargs,
 ):
     # Convert data to PyTorch tensors
     X = X.to(device)
@@ -68,6 +69,7 @@ def train(
     device: str = "cuda",
     eps: float = 1e-8,
     loss_type: str = "cross_entropy",
+    **kwargs,
 ):
     """
     Train the model using the given data and parameters.

@@ -2,6 +2,18 @@ from torch.distributions.multivariate_normal import MultivariateNormal
 import torch
 from typing import List
 
+class Uniform:
+    def __init__(self, low: torch.Tensor, high: torch.Tensor):
+        self.low = low
+        self.high = high
+    
+    def sample(self, n_samples: int):
+        # [low, high] are 1d tensors
+        samples = torch.rand((n_samples, self.low.size(0)), device=self.low.device)
+        samples = samples * (self.high - self.low) + self.low
+        return samples
+    def __repr__(self):
+        return f"Uniform(low={self.low}, high={self.high})"
 
 class Gaussian:
     mu: torch.Tensor
