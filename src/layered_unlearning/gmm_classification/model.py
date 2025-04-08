@@ -1,40 +1,96 @@
 import torch
 import torch.nn as nn
-from sklearn.preprocessing import PolynomialFeatures
 import numpy as np
-
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.kernel_approximation import RBFSampler
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 
 class LogisticModel(nn.Module):
-    def __init__(self, dim: int, n_classes: int, degree: int = None):
+    def __init__(self, dim: int, n_classes: int, degree: int = None, n_layers: int = 0, hidden_dim: int = 64, rbf: bool = False, batch_norm: bool = True):
         super(LogisticModel, self).__init__()
 
-        self.processor = lambda x: x
-        self.linear = nn.Linear(dim, 1)
+        self.processors = [
+            lambda x: x,
+        ]
+
+        n_features = dim
+
         self.degree = degree
 
+        sample = torch.randn(1, dim)
+
         if degree is not None and degree > 1:
-            self.poly = PolynomialFeatures(degree=degree, include_bias=False)
-            self.poly.fit(np.zeros((1, dim)))
-            self.processor = lambda x: torch.cat(
-                [self._get_polynomial_features(x)], dim=1
+            self.poly = PolynomialFeatures(degree=(2, self.degree), include_bias=False)
+            self.processors.append(
+                lambda x: self._get_polynomial_features(x)
             )
-            self.linear = nn.Linear(self.poly.n_output_features_, 1)
+            n_features += self._get_polynomial_features(sample).shape[-1]
+
+        if rbf:
+            self.processors.append(
+                lambda x: self._get_rbf_features(x)
+            )
+            self.rbf = RBFSampler(random_state=42, n_components=1000)
+            n_samples = 1000
+            self.rbf.fit(
+                np.random.rand(n_samples, dim) * 100 - 50
+            )
+            n_features += self._get_rbf_features(sample).shape[-1]
+        
+        self.layers = nn.ModuleList()
+
+        for i in range(n_layers):
+            if i == 0:
+                self.layers.append(
+                    nn.Linear(n_features, hidden_dim)
+                )
+            else:
+                self.layers.append(
+                    nn.Linear(hidden_dim, hidden_dim)
+                )
+
+            if batch_norm:
+                self.layers.append(
+                    nn.BatchNorm1d(hidden_dim)
+                )
+            self.layers.append(
+                nn.ReLU()
+            )
+            
+
+        if n_layers == 0:
+            hidden_dim = n_features
+            
+        self.layers.append(
+            nn.Linear(hidden_dim, 1)
+        )
 
     def _get_polynomial_features(self, x: torch.Tensor):
-        # Using sklearn's PolynomialFeatures to generate quadratic features
-        x_np = x.cpu().detach().numpy()
-        poly_features = self.poly.fit_transform(x_np)
-        # Convert back to torch tensor
-        poly_features = torch.tensor(poly_features, device=x.device)
-        return poly_features
+        if self.degree is not None and self.degree > 1:
+            device = x.device
+            x = self.poly.fit_transform(x.cpu().numpy())
+            x = torch.tensor(x, device=device)
+        return x
 
-    def forward(self, x: torch.Tensor):
-        x = self.processor(x)
-        x = self.linear(x)
+    def _get_rbf_features(self, x: torch.Tensor):
+        device = x.device
+        x = self.rbf.transform(x.cpu().numpy())
+        x = torch.tensor(x, device=device).float()
+        return x
+
+
+    def forward(self, x: torch.Tensor, return_logits: bool = False):
+        x = [
+            processor(x) for processor in self.processors
+        ]
+        x = torch.cat(x, dim=-1)
+        for layer in self.layers:
+            x = layer(x)
+        if return_logits:
+            return x
         x = torch.sigmoid(x)
         return x
 
@@ -98,17 +154,16 @@ def train(
             pbar := tqdm(dataloader, desc=f"Epoch {epoch + 1}/{n_epochs}")
         ):
             optimizer.zero_grad()
-            outputs = model(batch_X).squeeze()
             batch_y = batch_y.float()
 
             if loss_type == "cross_entropy":
+                outputs = model(batch_X).squeeze()
                 loss = -(
                     batch_y * torch.log(outputs + eps)
                     + (1 - batch_y) * torch.log(1 - outputs + eps)
                 )
             elif loss_type == "hinge":
-                assert outputs.min() >= 0 and outputs.max() <= 1
-                logits = torch.log(outputs / (1 - outputs) + eps)
+                logits = model(batch_X, return_logits=True).squeeze()
                 loss = torch.clamp(1 - batch_y * logits, min=0)
             else:
                 raise ValueError(f"Unknown loss type: {loss_type}")
