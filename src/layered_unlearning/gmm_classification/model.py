@@ -22,6 +22,10 @@ class LogisticModel(nn.Module):
 
         sample = torch.randn(1, dim)
 
+        if degree == 0:
+            n_features = 0
+            self.processors = []
+
         if degree is not None and degree > 1:
             self.poly = PolynomialFeatures(degree=(2, self.degree), include_bias=False)
             self.processors.append(
@@ -33,11 +37,15 @@ class LogisticModel(nn.Module):
             self.processors.append(
                 lambda x: self._get_rbf_features(x)
             )
-            self.rbf = RBFSampler(random_state=42, n_components=1000)
-            n_samples = 1000
-            self.rbf.fit(
-                np.random.rand(n_samples, dim) * 100 - 50
-            )
+            self.rbf = []
+            self.sigma = 8
+            width = 60
+            num = 12
+
+            for i in np.linspace(-width, width, num=num):
+                for j in np.linspace(-width, width, num=num):
+                    self.rbf.append([i, j])
+            self.rbf = np.array(self.rbf)
             n_features += self._get_rbf_features(sample).shape[-1]
         
         self.layers = nn.ModuleList()
@@ -77,7 +85,12 @@ class LogisticModel(nn.Module):
 
     def _get_rbf_features(self, x: torch.Tensor):
         device = x.device
-        x = self.rbf.transform(x.cpu().numpy())
+        x = x.cpu().numpy()
+        
+        distances = np.linalg.norm(
+            x[:, np.newaxis] - self.rbf, axis=2
+        ) 
+        x = np.exp(-distances ** 2 / (2 * self.sigma ** 2))
         x = torch.tensor(x, device=device).float()
         return x
 
@@ -100,19 +113,34 @@ def evaluate(
     X: torch.Tensor,
     y: torch.Tensor,
     device: str = "cuda",
+    batch_size: int = 32,
     **kwargs,
 ):
     # Convert data to PyTorch tensors
     X = X.to(device)
     y = y.to(device)
-
+    
     model.eval()
-    with torch.no_grad():
-        outputs = model(X).squeeze()
-        y_pred = (outputs > 0.5).float()
-        accuracy = (y_pred == y).float().mean().item()
-    return accuracy
+    dataloader = DataLoader(
+        list(zip(X, y)),
+        batch_size=batch_size,
+        shuffle=False,
+    )
+    y_pred = []
+    y_true = []
 
+    for batch_X, batch_y in dataloader:
+        batch_X = batch_X.to(device)
+        batch_y = batch_y.to(device)
+        with torch.no_grad():
+            outputs = model(batch_X).squeeze()
+            y_pred.append(outputs.cpu())
+            y_true.append(batch_y.cpu())
+    y_pred = torch.cat(y_pred)
+    y_true = torch.cat(y_true)
+    y_pred = (y_pred > 0.5).float()
+    accuracy = (y_pred == y_true).float().mean().item()
+    return accuracy
 
 def train(
     model: nn.Module,
