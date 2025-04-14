@@ -9,7 +9,16 @@ from tqdm import tqdm
 
 
 class LogisticModel(nn.Module):
-    def __init__(self, dim: int, n_classes: int, degree: int = None, n_layers: int = 0, hidden_dim: int = 64, rbf: bool = False, batch_norm: bool = True):
+    def __init__(
+        self,
+        dim: int,
+        n_classes: int,
+        degree: int = None,
+        n_layers: int = 0,
+        hidden_dim: int = 64,
+        rbf: bool = False,
+        batch_norm: bool = True,
+    ):
         super(LogisticModel, self).__init__()
 
         self.processors = [
@@ -28,15 +37,11 @@ class LogisticModel(nn.Module):
 
         if degree is not None and degree > 1:
             self.poly = PolynomialFeatures(degree=(2, self.degree), include_bias=False)
-            self.processors.append(
-                lambda x: self._get_polynomial_features(x)
-            )
+            self.processors.append(lambda x: self._get_polynomial_features(x))
             n_features += self._get_polynomial_features(sample).shape[-1]
 
         if rbf:
-            self.processors.append(
-                lambda x: self._get_rbf_features(x)
-            )
+            self.processors.append(lambda x: self._get_rbf_features(x))
             self.rbf = []
             self.sigma = 8
             width = 60
@@ -47,34 +52,23 @@ class LogisticModel(nn.Module):
                     self.rbf.append([i, j])
             self.rbf = np.array(self.rbf)
             n_features += self._get_rbf_features(sample).shape[-1]
-        
+
         self.layers = nn.ModuleList()
 
         for i in range(n_layers):
             if i == 0:
-                self.layers.append(
-                    nn.Linear(n_features, hidden_dim)
-                )
+                self.layers.append(nn.Linear(n_features, hidden_dim))
             else:
-                self.layers.append(
-                    nn.Linear(hidden_dim, hidden_dim)
-                )
+                self.layers.append(nn.Linear(hidden_dim, hidden_dim))
 
             if batch_norm:
-                self.layers.append(
-                    nn.BatchNorm1d(hidden_dim)
-                )
-            self.layers.append(
-                nn.ReLU()
-            )
-            
+                self.layers.append(nn.BatchNorm1d(hidden_dim))
+            self.layers.append(nn.ReLU())
 
         if n_layers == 0:
             hidden_dim = n_features
-            
-        self.layers.append(
-            nn.Linear(hidden_dim, 1)
-        )
+
+        self.layers.append(nn.Linear(hidden_dim, 1))
 
     def _get_polynomial_features(self, x: torch.Tensor):
         if self.degree is not None and self.degree > 1:
@@ -86,19 +80,14 @@ class LogisticModel(nn.Module):
     def _get_rbf_features(self, x: torch.Tensor):
         device = x.device
         x = x.cpu().numpy()
-        
-        distances = np.linalg.norm(
-            x[:, np.newaxis] - self.rbf, axis=2
-        ) 
-        x = np.exp(-distances ** 2 / (2 * self.sigma ** 2))
+
+        distances = np.linalg.norm(x[:, np.newaxis] - self.rbf, axis=2)
+        x = np.exp(-(distances**2) / (2 * self.sigma**2))
         x = torch.tensor(x, device=device).float()
         return x
 
-
     def forward(self, x: torch.Tensor, return_logits: bool = False):
-        x = [
-            processor(x) for processor in self.processors
-        ]
+        x = [processor(x) for processor in self.processors]
         x = torch.cat(x, dim=-1)
         for layer in self.layers:
             x = layer(x)
@@ -119,7 +108,7 @@ def evaluate(
     # Convert data to PyTorch tensors
     X = X.to(device)
     y = y.to(device)
-    
+
     model.eval()
     dataloader = DataLoader(
         list(zip(X, y)),
@@ -141,6 +130,7 @@ def evaluate(
     y_pred = (y_pred > 0.5).float()
     accuracy = (y_pred == y_true).float().mean().item()
     return accuracy
+
 
 def train(
     model: nn.Module,
