@@ -17,6 +17,9 @@ class LogisticModel(nn.Module):
         n_layers: int = 0,
         hidden_dim: int = 64,
         rbf: bool = False,
+        rbf_sigma: float = 8,
+        rbf_width: float = 60,
+        rbf_num: int = 12,
         batch_norm: bool = True,
     ):
         super(LogisticModel, self).__init__()
@@ -43,9 +46,9 @@ class LogisticModel(nn.Module):
         if rbf:
             self.processors.append(lambda x: self._get_rbf_features(x))
             self.rbf = []
-            self.sigma = 8
-            width = 60
-            num = 12
+            self.sigma = rbf_sigma
+            width = rbf_width
+            num = rbf_num
 
             for i in np.linspace(-width, width, num=num):
                 for j in np.linspace(-width, width, num=num):
@@ -105,7 +108,6 @@ def evaluate(
     batch_size: int = 32,
     **kwargs,
 ):
-    # Convert data to PyTorch tensors
     X = X.to(device)
     y = y.to(device)
 
